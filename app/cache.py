@@ -15,7 +15,9 @@ import redis.asyncio as aioredis
 
 logger = logging.getLogger(__name__)
 
-REDIS_URL: str = os.environ["REDIS_URL"]  # fail fast if unset
+REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+# REDIS_URL: str = os.environ["REDIS_URL"] # fail fast if unset
 
 # TTL for redirect cache entries (seconds).
 # Chosen to balance freshness vs DB load. Configurable at deploy time.

@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 # Engine
 # ---------------------------------------------------------------------------
 
-DATABASE_URL: str = os.environ["DATABASE_URL"]  # fail fast if unset
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# DATABASE_URL: str = os.environ["DATABASE_URL"]  # fail fast if unset
 
 engine = create_async_engine(
     DATABASE_URL,

@@ -14,6 +14,10 @@ This file is the ONLY entry point. Everything else is imported, not executed.
 import logging
 import os
 import time
+
+from dotenv import load_dotenv
+load_dotenv()
+
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
