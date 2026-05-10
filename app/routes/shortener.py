@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app import cache as redis_cache
 from app.database import get_db
@@ -38,6 +39,8 @@ SHORT_CODE_LENGTH: int = int(os.getenv("SHORT_CODE_LENGTH", "6"))
 BASE_URL: str = os.getenv("BASE_URL", "http://localhost:8000")
 
 _ALPHABET = string.ascii_letters + string.digits
+
+MAX_RETRIES = 5
 
 
 # ---------------------------------------------------------------------------
@@ -64,18 +67,35 @@ async def shorten(
 ) -> ShortenResponse:
 
     long_url = str(payload.url)
-    short_code = _generate_code()
 
-    url_row = Url(short_code=short_code, long_url=long_url)
-    db.add(url_row)
+    for attempt in range(MAX_RETRIES):
+        short_code = _generate_code()
+        url_row = Url(short_code=short_code, long_url=long_url)
 
-    try:
-        await db.commit()
-        await db.refresh(url_row)
-    except Exception as exc:
-        await db.rollback()
-        logger.error("Failed to persist short URL: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to create short URL.") from exc
+        db.add(url_row)
+
+        try:
+            await db.commit()
+            await db.refresh(url_row)
+            break  # success → exit loop
+
+        except IntegrityError:
+            await db.rollback()
+
+            # collision → retry
+            if attempt == MAX_RETRIES - 1:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Could not generate unique short code. Try again.",
+                )
+
+        except Exception as exc:
+            await db.rollback()
+            logger.error("Failed to persist short URL: %s", exc)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create short URL.",
+            ) from exc
 
     http_requests_total.labels(
         endpoint="/shorten", method="POST", status_code="201"
@@ -126,7 +146,7 @@ async def redirect(
         # 3. Cache population (best effort)
         await redis_cache.set(code, long_url)
 
-        # 4. click tracking (async-safe simple insert)
+        # 4. click tracking
         db.add(Click(url_id=url_row.id))
         await db.commit()
 
