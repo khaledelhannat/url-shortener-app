@@ -2,15 +2,13 @@
 routes/shortener.py — Core URL shortening and redirect endpoints.
 
 POST /shorten  — accepts a long URL, writes to PostgreSQL, returns short URL.
-GET  /{code}   — checks Redis cache first; falls back to PostgreSQL on miss;
+GET  /r/{code} — checks Redis cache first; falls back to PostgreSQL on miss;
                  records a click; returns HTTP 301 redirect.
 
 Design notes:
   - Cache misses are non-fatal: Redis failure falls through to DB.
   - Click recording uses a fire-and-forget INSERT (no user-visible latency).
-  - 301 (permanent) chosen deliberately: browsers cache it, reducing future
-    load. In a real product this might be 302 (temporary) for analytics
-    fidelity — document the tradeoff in the README.
+  - 301 used for simplicity (production may prefer 302 depending on analytics strategy).
 """
 
 import logging
@@ -39,23 +37,20 @@ router = APIRouter(tags=["shortener"])
 SHORT_CODE_LENGTH: int = int(os.getenv("SHORT_CODE_LENGTH", "6"))
 BASE_URL: str = os.getenv("BASE_URL", "http://localhost:8000")
 
-_ALPHABET = string.ascii_letters + string.digits  # 62 chars → 62^6 ≈ 56 billion combos
+_ALPHABET = string.ascii_letters + string.digits
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-
 def _generate_code() -> str:
-    """Return a cryptographically random alphanumeric short code."""
     return "".join(secrets.choice(_ALPHABET) for _ in range(SHORT_CODE_LENGTH))
 
 
 # ---------------------------------------------------------------------------
 # POST /shorten
 # ---------------------------------------------------------------------------
-
 
 @router.post(
     "/shorten",
@@ -67,14 +62,7 @@ async def shorten(
     payload: ShortenRequest,
     db: AsyncSession = Depends(get_db),
 ) -> ShortenResponse:
-    """
-    Accepts a valid HTTP/HTTPS URL and returns a short code.
 
-    Collision probability at 6 chars / 62-char alphabet is negligible for
-    this workload scale. If a collision occurs on INSERT (unique constraint
-    violation), the client receives a 500 — acceptable for a platform demo;
-    production would retry with a new code.
-    """
     long_url = str(payload.url)
     short_code = _generate_code()
 
@@ -95,19 +83,18 @@ async def shorten(
 
     return ShortenResponse(
         short_code=url_row.short_code,
-        short_url=f"{BASE_URL}/{url_row.short_code}",
+        short_url=f"{BASE_URL}/r/{url_row.short_code}",
         long_url=url_row.long_url,
         created_at=url_row.created_at,
     )
 
 
 # ---------------------------------------------------------------------------
-# GET /{code}
+# GET /r/{code}
 # ---------------------------------------------------------------------------
 
-
 @router.get(
-    "/{code}",
+    "/r/{code}",
     summary="Redirect to the original URL",
     response_class=RedirectResponse,
 )
@@ -115,15 +102,8 @@ async def redirect(
     code: str,
     db: AsyncSession = Depends(get_db),
 ) -> RedirectResponse:
-    """
-    Looks up *code* in Redis first; falls back to PostgreSQL on a miss.
-    Records a click event and increments redirect metrics.
-    Returns HTTP 301 to the original URL.
 
-    Cache failure is non-fatal — the route falls through to DB and the
-    user is never blocked by a Redis outage.
-    """
-    # ── 1. Cache check ──────────────────────────────────────────────────────
+    # 1. Redis lookup
     long_url: str | None = await redis_cache.get(code)
 
     if long_url is not None:
@@ -131,28 +111,28 @@ async def redirect(
     else:
         cache_hits_total.labels(result="miss").inc()
 
-        # ── 2. DB lookup ─────────────────────────────────────────────────────
+        # 2. DB fallback
         result = await db.execute(select(Url).where(Url.short_code == code))
         url_row: Url | None = result.scalar_one_or_none()
 
         if url_row is None:
             http_requests_total.labels(
-                endpoint="/{code}", method="GET", status_code="404"
+                endpoint="/r/{code}", method="GET", status_code="404"
             ).inc()
             raise HTTPException(status_code=404, detail="Short code not found.")
 
         long_url = url_row.long_url
 
-        # ── 3. Populate cache so next hit is served from Redis ───────────────
+        # 3. Cache population (best effort)
         await redis_cache.set(code, long_url)
 
-        # ── 4. Record click event ────────────────────────────────────────────
+        # 4. click tracking (async-safe simple insert)
         db.add(Click(url_id=url_row.id))
         await db.commit()
 
     redirects_total.labels(code=code).inc()
     http_requests_total.labels(
-        endpoint="/{code}", method="GET", status_code="301"
+        endpoint="/r/{code}", method="GET", status_code="301"
     ).inc()
 
     return RedirectResponse(url=long_url, status_code=301)
