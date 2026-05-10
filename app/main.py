@@ -126,8 +126,6 @@ def create_app() -> FastAPI:
 
     application.include_router(health.router)
     application.include_router(stats.router)
-    # shortener includes the catch-all /{code} — must be registered last
-    application.include_router(shortener.router)
 
     # ── Prometheus scrape endpoint ───────────────────────────────────────────
 
@@ -144,6 +142,8 @@ def create_app() -> FastAPI:
 
     return application
 
+    # shortener includes the catch-all /{code} — must be registered last
+    application.include_router(shortener.router)
 
 def _normalise_path(path: str) -> str:
     """
