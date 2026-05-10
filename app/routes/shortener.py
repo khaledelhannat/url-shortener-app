@@ -129,4 +129,4 @@ async def redirect(
 
     redirects_total.labels(code=code).inc()
 
-    return RedirectResponse(url=long_url, status_code=301)
+    return RedirectResponse(url=long_url, status_code=307)
