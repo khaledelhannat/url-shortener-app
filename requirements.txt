@@ -1,0 +1,20 @@
+# Runtime dependencies — installed in the Docker runtime image
+# Pin minor versions for reproducibility; patch versions float for security fixes.
+# Update and re-pin after each stage milestone.
+
+# Web framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1          # standard = includes httptools + uvloop
+
+# Database
+sqlalchemy[asyncio]==2.0.36        # asyncio extras pulls in greenlet
+asyncpg==0.30.0                    # async PostgreSQL driver (used by SQLAlchemy)
+
+# Cache
+redis==5.2.1                       # redis-py; includes asyncio support
+
+# Observability
+prometheus-client==0.21.0
+
+# Validation (bundled with FastAPI but pinned for reproducibility)
+pydantic==2.10.3

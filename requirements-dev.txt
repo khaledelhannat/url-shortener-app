@@ -1,0 +1,21 @@
+# Dev/test dependencies — installed in the builder stage only, never in runtime.
+# The Dockerfile builder stage installs requirements.txt + requirements-dev.txt.
+# The runtime stage copies only the installed packages from builder, so these
+# tools are stripped from the final image.
+
+# Test runner
+pytest==8.3.4
+pytest-asyncio==0.24.0
+anyio==4.7.0                       # async backend for pytest-asyncio
+
+# HTTP test client (async)
+httpx==0.28.0                      # AsyncClient for ASGI transport
+
+# In-memory SQLite for tests (avoids needing a real PostgreSQL in unit tests)
+aiosqlite==0.20.0
+
+# Linter / formatter
+ruff==0.8.3
+
+# Type checking (optional, run in CI)
+mypy==1.13.0
