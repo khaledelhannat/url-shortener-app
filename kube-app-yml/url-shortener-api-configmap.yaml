@@ -1,0 +1,12 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: url-shortener-api-config
+  namespace: url-shortener-api
+data:
+  POSTGRES_DB: urlshortener
+
+  BASE_URL: "http://url-shortener-api-service:8000"
+  LOG_LEVEL: "info"
+  ENABLE_DOCS: "true"
+  API_PORT: "8000"

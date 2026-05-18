@@ -1,0 +1,104 @@
+========================================
+URL SHORTENER - MANUAL SMOKE TEST RUNBOOK
+========================================
+
+NOTE:
+Run port-forward first if needed:
+
+kubectl port-forward svc/url-shortener-api-service 8000:8000 -n url-shortener-api
+
+Base URL:
+http://localhost:8000
+========================================
+
+
+1. HEALTH CHECK
+----------------------------------------
+curl -i http://localhost:8000/health
+
+
+Expected:
+- HTTP 200
+- Service is healthy
+
+
+========================================
+
+
+2. CREATE SHORT URL
+----------------------------------------
+curl -X POST http://localhost:8000/shorten \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/test"}'
+
+
+Expected:
+- HTTP 201
+- Response contains:
+  - short_code
+
+
+========================================
+
+
+3. REDIRECT TEST
+----------------------------------------
+Replace <short_code> with value from previous step:
+
+curl -v http://localhost:8000/r/<short_code>
+
+
+Expected:
+- HTTP 307
+- Location header = original URL
+
+
+========================================
+
+
+4. METRICS CHECK
+----------------------------------------
+curl http://localhost:8000/metrics
+
+
+Expected:
+- Prometheus metrics output
+- Should contain:
+  http_requests_total
+
+
+========================================
+
+
+5. FULL SYSTEM VALIDATION FLOW
+----------------------------------------
+Step 1: Create URL
+Step 2: Get short_code
+Step 3: Resolve redirect
+Step 4: Validate metrics increment
+
+
+========================================
+
+
+6. DEBUGGING IF FAILED
+----------------------------------------
+
+kubectl port-forward svc/url-shortener-api-service 8000:8000 -n url-shortener-api
+
+Check pods:
+kubectl get pods -n url-shortener-api
+
+Check logs:
+kubectl logs <pod-name> -n url-shortener-api
+
+Check services:
+kubectl get svc -n url-shortener-api
+
+Check endpoints:
+kubectl get endpoints -n url-shortener-api
+
+
+========================================
+END OF RUNBOOK
+========================================

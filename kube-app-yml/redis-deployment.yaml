@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-deployment
+  namespace: url-shortener-api
+  labels:
+    app: redis
+    tier: cache
+
+spec:
+  selector:
+    matchLabels:
+      app: redis
+      tier: cache
+
+  replicas: 1
+
+  template:
+    metadata:
+      labels:
+        app: redis
+        tier: cache
+
+    spec:
+      containers:
+        - name: redis
+          image: redis:7
+
+          ports:
+            - containerPort: 6379
+              name: redis
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 60Mi
+            limits:
+              cpu: 100m
+              memory: 120Mi
+
+          livenessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+          readinessProbe:
+            tcpSocket:
+              port: 6379
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+
+      restartPolicy: Always

@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: StatefulSet
+
+metadata:
+  name: postgres
+  namespace: url-shortener-api
+
+spec:
+  serviceName: postgres-service
+
+  replicas: 1 # by default is 1
+
+  selector:
+    matchLabels:
+      app: postgres
+      tier: database
+
+  template:
+    metadata:
+      labels:
+        app: postgres
+        tier: database
+
+    spec:
+      containers:
+        - name: postgres
+
+          image: postgres:16-alpine
+
+          ports:
+            - containerPort: 5432
+              name: postgres
+
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: url-shortener-api-secret
+                  key: POSTGRES_USER
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: url-shortener-api-secret
+                  key: POSTGRES_PASSWORD
+
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: url-shortener-api-config
+                  key: POSTGRES_DB
+
+            # PGDATA environment variable is used to specify the location of the PostgreSQL data directory. By default, PostgreSQL uses /var/lib/postgresql/data as the data directory, but by setting PGDATA to /var/lib/postgresql/data/pgdata, we can ensure that the data is stored in a subdirectory called pgdata within the main data directory.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-storage
+
+      spec:
+        accessModes:
+          - ReadWriteOnce
+
+        storageClassName: longhorn
+
+        resources:
+          requests:
+            storage: 1Gi

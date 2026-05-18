@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: url-shortener-api-deployment
+  namespace: url-shortener-api
+  labels:
+    app: url-shortener-api
+    tier: backend
+    version: v1
+
+spec:
+  selector:
+    matchLabels:
+      app: url-shortener-api
+  replicas: 3
+
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+
+  template:
+    metadata:
+      labels:
+        app: url-shortener-api
+        tier: backend
+        version: v1
+
+    spec:
+      terminationGracePeriodSeconds: 20 # ADDED:graceful shutdown for rolling updates
+
+      containers:
+        - name: url-shortener-api-container
+          image: khaledelhannat/url-shortener-api:v2
+
+          ports:
+            - containerPort: 8000
+
+          # -----------------------------
+          # RESOURCE MANAGEMENT
+          # -----------------------------
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+          # -----------------------------
+          # STARTUP STABILITY (NEW)
+          # -----------------------------
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            failureThreshold: 30 # allows slow startup (important for DB connections)
+            periodSeconds: 5
+
+          # -----------------------------
+          # LIVENESS PROBE
+          # -----------------------------
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            periodSeconds: 10
+
+          # -----------------------------
+          # READINESS PROBE
+          # -----------------------------
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+            periodSeconds: 10
+
+          imagePullPolicy: IfNotPresent
+
+          # -----------------------------
+          # ENVIRONMENT (CLEAN ARCHITECTURE FIX)
+          # -----------------------------
+          env:
+            # credentials (from Secret)
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: url-shortener-api-secret
+                  key: POSTGRES_USER
+
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: url-shortener-api-secret
+                  key: POSTGRES_PASSWORD
+
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: url-shortener-api-config
+                  key: POSTGRES_DB
+
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: url-shortener-api-secret
+                  key: DATABASE_URL
+
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: url-shortener-api-secret
+                  key: REDIS_URL
