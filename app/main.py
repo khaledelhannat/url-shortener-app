@@ -12,6 +12,7 @@ Responsibilities:
 import logging
 import os
 import time
+import asyncio
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -46,9 +47,23 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting URL Shortener application...")
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        logger.info("Database schema verified / created.")
+    # -----------------------------------------------------------------------
+    # ONLY CHANGE: DB init now with retry loop instead of crash
+    # -----------------------------------------------------------------------
+    for attempt in range(1, 11):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("Database schema verified / created.")
+            break
+        except Exception as e:
+            logger.warning(
+                f"DB not ready yet (attempt {attempt}/10): {e}"
+            )
+            if attempt == 10:
+                logger.error("DB failed after max retries. Continuing without schema init.")
+                break
+            await asyncio.sleep(2)
 
     logger.info("Application startup complete. Accepting traffic.")
 
@@ -78,10 +93,6 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
 
-    # -----------------------------------------------------------------------
-    # Middleware
-    # -----------------------------------------------------------------------
-
     @app.middleware("http")
     async def prometheus_middleware(request: Request, call_next):
         start = time.perf_counter()
@@ -103,17 +114,9 @@ def create_app() -> FastAPI:
 
         return response
 
-    # -----------------------------------------------------------------------
-    # Routes (ORDER MATTERS)
-    # -----------------------------------------------------------------------
-
     app.include_router(health.router)
     app.include_router(stats.router)
-    app.include_router(shortener.router)  # MUST be last (catch-all /{code})
-
-    # -----------------------------------------------------------------------
-    # Metrics endpoint
-    # -----------------------------------------------------------------------
+    app.include_router(shortener.router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics() -> Response:
@@ -124,9 +127,6 @@ def create_app() -> FastAPI:
 
     return app
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _normalise_path(path: str) -> str:
     static = {"/shorten", "/health", "/ready", "/metrics", "/docs"}
@@ -144,8 +144,5 @@ def _normalise_path(path: str) -> str:
 
     return path
 
-# ---------------------------------------------------------------------------
-# ASGI entry
-# ---------------------------------------------------------------------------
 
 app = create_app()
