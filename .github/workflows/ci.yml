@@ -19,12 +19,12 @@ jobs:
           docker --version
           docker compose version
 
-      - name: Start system with docker-compose
+      - name: Start system with docker compose
         run: |
           export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
           export POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
           export POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-          docker-compose up -d
+          docker compose up -d
 
       - name: Wait for services
         run: |
@@ -43,4 +43,4 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
