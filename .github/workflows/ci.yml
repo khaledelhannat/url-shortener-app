@@ -10,6 +10,11 @@ jobs:
   system-validation:
     runs-on: ubuntu-latest
 
+    env:
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -20,11 +25,7 @@ jobs:
           docker compose version
 
       - name: Start system with docker compose
-        run: |
-          export POSTGRES_USER=${{ secrets.POSTGRES_USER }}
-          export POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
-          export POSTGRES_DB=${{ secrets.POSTGRES_DB }}
-          docker compose up -d
+        run: docker compose up -d
 
       - name: Wait for services
         run: |
