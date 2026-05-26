@@ -5,6 +5,15 @@ on:
     branches: ["main"]
   push:
     branches: ["main"]
+    paths:
+      - "app/**"
+      - ".github/workflows/**"
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "ci_smoke_tests.py"
+      - "smoke_runner.py"
+      - "requirements.txt"
+      - "requirements-dev.txt"
 
 jobs:
   # lint:
