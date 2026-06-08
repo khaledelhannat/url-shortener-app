@@ -7,6 +7,7 @@ Responsibilities:
   - Attach Prometheus middleware for automatic request timing
   - Mount all route modules
   - Expose /metrics endpoint for Prometheus scraping
+  - - Testing
 """
 
 import logging
