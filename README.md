@@ -117,7 +117,6 @@ A cloud-native delivery platform implementing automated CI/CD and GitOps workflo
  └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 ## Platform Overview & Technical Stack
-
 A quick look at the core design patterns, tools, and structural decisions powering the platform.
 
 ### Core Capabilities
@@ -134,10 +133,17 @@ A quick look at the core design patterns, tools, and structural decisions poweri
 * **Storage Engine:** Longhorn Distributed Block Storage
 * **CI/CD Automation:** GitHub Actions, ArgoCD, Docker, `yq`
 
+### Repository Topography
+* **Application Source (This Repo):** [`khaledelhannat/url-shortener-app`](https://github.com/khaledelhannat/url-shortener-app)
+  > Contains the application business logic, local Docker setups, integration smoke tests, and the GitHub Actions continuous validation pipelines.
+* **Infrastructure Source:** [`khaledelhannat/url-shortener-infra`](https://github.com/khaledelhannat/url-shortener-infra)
+  > Contains the declarative environment manifests (Deployments, Services, Ingress, MetalLB configurations) actively tracked and synchronized by ArgoCD.
+
 ### Strategic Architecture Decisions
 * **Decoupled Dual-Repo:** Isolates application business logic from environment infrastructure manifests.
 * **Pull-Based Delivery:** ArgoCD pulls state configurations securely without exposing cluster API keys to CI.
 * **Bare-Metal First:** Software-defined layers ensure the identical stack runs on local hardware or any public cloud.
+
 
 ## Phase 1: Core Kubernetes Cluster & Compute Topology
 
