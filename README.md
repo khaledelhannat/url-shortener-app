@@ -1,4 +1,121 @@
+# End-to-End Application Delivery Platform CI/CD, GitOps & Bare-Metal Kubernetes Automation
+A cloud-native delivery platform implementing automated CI/CD and GitOps workflows to continuously build, validate, release, and synchronize applications from source code to a bare-metal Kubernetes cluster using GitHub Actions, Argo CD, MetalLB, and Longhorn.
 
+```
+=============================================================================================================================================
+                                           AUTOMATION PLANE : DEVELOPMENT, CI/CD & GITOPS LIFECYCLE LOOP
+=============================================================================================================================================
+
+ [ DEVELOPER WORKSTATION ]
+         │
+         │ Git Push / Pull Request
+         ▼
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ REPOSITORY 1: khaledelhannat/url-shortener-app (Source Code & CI Workflows)                                                            │
+ └───────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+         │
+         ├─► Triggers: .github/workflows/quality_gate_pipeline.yml
+         │   │
+         │   ▼ [ Ephemeral Test Environment ]
+         │   ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+         │   │ GitHub Actions Runner (ubuntu-latest)                                                                                      │
+         │   │  ├─► docker compose up -d (API + Redis + PostgreSQL)                                                                       │
+         │   │  ├─► Health Check Loop: curl -f http://localhost:8000/health (Up to 30 attempts)                                           │
+         │   │  ├─► Test Execution: python ci_smoke_tests.py (Validates endpoint behavior)                                                │
+         │   │  └─► Cleanup: docker compose down -v (Deterministic sandbox destruction)                                                   │
+         │   └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+         │
+         └─► On Success ──► Triggers: .github/workflows/release_pipeline.yml
+             │
+             ├──► Job 1: docker_ops (Artifact Compilation)
+             │    ├─► docker login (Authenticated via DOCKER_USERNAME/DOCKER_PASSWORD secrets)                                            │
+             │    └─► docker build & push ──► [ DOCKER HUB REGISTRY ]                                                                     │
+             │                                 ├─► khaledelhannat/url-shortener-api:latest                                                │
+             │                                 └─► khaledelhannat/url-shortener-api:${{ github.sha }} (Immutable Hash)                    │
+             │                                                                                                                            │
+             └──► Job 2: update_infra_manifest (Manifest Mutation)                                                                        │
+                  ├─► Checkout REPOSITORY 2 (url-shortener-infra) via Git Personal Access Token (INFRA_REPO_PAT)                          │
+                  ├─► Execute: yq -i '.spec.template.spec.containers[0].image = "url-shortener-api:${{ github.sha }}"'                    │
+                  │   Targeting File: environments/dev/app/deployment.yaml                                                                │
+                  └─► git commit & push ("chore: bump api image version... [skip ci]") back to Repo 2 main branch                         │
+                                                              │
+                                                              │
+ ┌────────────────────────────────────────────────────────────┴───────────────────────────────────────────────────────────────────────────┐
+ │ REPOSITORY 2: khaledelhannat/url-shortener-infra (Declarative Environment State Specs)                                                 │
+ └────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────┘
+                                              │
+                                              │ Continuous Out-of-Sync Polling Loop
+                                              ▼
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ ARGOCD CONTROL PLANE (Namespace: argocd)                                                                                               │
+ │  ├─► argocd-application-controller-0  : Evaluates cluster live state vs. REPOSITORY 2 manifests                                        │
+ │  ├─► argocd-repo-server               : Indexes, parses, and caches YAML files from the tracking path                                  │
+ │  ├─► argocd-redis                     : In-memory cache optimized to reduce remote API threshold limits                                │
+ │  └─► CRD Tracking Manifest            : application.yaml (Targeting: url-shortener-dev | Status: Synced / Healthy)                     │
+ └────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────┘
+                                              │
+                                              │ Enforces Declarative State (RollingUpdate Execution)
+                                              ▼
+=============================================================================================================================================
+                                           RUNTIME PLANE : BARE-METAL KUBERNETES TOPOGRAPHY
+=============================================================================================================================================
+
+ [ NORTHBOUND TRAFFIC ENTRY POINT ]
+                 │
+                 ▼ Client Requests (HTTP/HTTPS)
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ NETWORK INGRESS TIER (Namespace: ingress-nginx)                                                                                        │
+ │  ├─► MetalLB LoadBalancer VIP : 192.168.141.241 (Layer 2 ARP Leader Election | Address Pool: 192.168.141.240-192.168.141.250)          │
+ │  └─► Ingress Controller Pod   : ingress-nginx-controller (Binds to Port 80:30145 and Port 443:32200)                                   │
+ └────────────────────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────┘
+                                              │
+                                              │ Evaluates Resource Object: url-shortener-ingress
+                                              │ Match Criteria: path: /api(/|$)(.*) (ImplementationSpecific)
+                                              │ Target Annotation: nginx.ingress.kubernetes.io/rewrite-target: /$2
+                                              ▼
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ CORE WORKLOAD ENVIRONMENT (Namespace: url-shortener-api)                                                                               │
+ │                                                                                                                                        │
+ │   ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐   │
+ │   │ INTERNAL SERVICE ROUTING LAYER                                                                                                 │   │
+ │   │  ├─► url-shortener-api-service (ClusterIP: 10.103.111.45) ──► Targets Internal Container Port: 8000                            │   │
+ │   │  ├─► redis-service             (ClusterIP: 10.106.184.212) ──► Targets Internal Container Port: 6379                           │   │
+ │   │  └─► postgres-service          (ClusterIP: None - Headless)──► Targets Stateful Network Identity Port: 5432                    │   │
+ │   └──────────────────────────┬─────────────────────────────────┬───────────────────────────────────┬───────────────────────────────┘   │
+ │                              │                                 │                                   │                                   │
+ │                              ▼ Load-Balanced Stream            ▼ Cache Lookups                     ▼ Relational Transactions           │
+ │   ┌───────────────────────────────────────────────────────┐ ┌─────────────────────────────┐ ┌──────────────────────────────────────┐   │
+ │   │ STATELESS COMPUTE WORKLOADS                           │ │ TRANSIENT CACHING WORKLOAD  │ │ STATEFUL WORKLOAD                    │   │
+ │   │  Deployment: url-shortener-api-deployment             │ │ Deployment: redis-deployment│ │ StatefulSet: postgres-statefulset    │   │
+ │   │  Replicas: 2 (Multi-Node Availability)                │ │ Replicas: 1                 │ │ Replicas: 1                          │   │
+ │   │  Strategy: RollingUpdate (MaxSurge: 25%)              │ │ Target Image: redis:7       │ │ Target Image: postgres:15            │   │
+ │   │                                                       │ │                             │ │                                      │   │
+ │   │  ┌──────────────────────┐   ┌──────────────────────┐  │ │ ┌─────────────────────────┐ │ │ ┌──────────────────────────────────┐ │   │
+ │   │  │ Pod: url-shortener-01│   │ Pod: url-shortener-02│  │ │ │ Pod: redis-cache-01     │ │ │ │ Pod: postgres-0                  │ │   │
+ │   │  │ QoS: Burstable       │   │ QoS: Burstable       │  │ │ │ Probes: tcpSocket:6379│ │ │ │ │ Access Mode: ReadWriteOnce (RWO) │ │   │
+ │   │  │ Port: 8000           │   │ Port: 8000           │  │ │ └─────────────────────────┘ │ │ └───────────────┬──────────────────┘ │   │
+ │   │  │ Probes: /health      │   │ Probes: /health      │  │ └─────────────────────────────┘ └─────────────────┼────────────────────┘   │
+ │   │  └──────────────────────┘   └──────────────────────┘  │                                                   │                        │
+ │   └───────────────────────────────────────────────────────┘                                                   │ VolumeClaimTemplate    │
+ │                                                                                                               ▼                        │
+ │   ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐   │
+ │   │ DISTRIBUTED STORAGE LAYER                                                                                                      │   │
+ │   │  ├─► PVC: postgres-storage-postgres-0 (Status: Bound | Requested Capacity: 1Gi)                                                │   │
+ │   │  ├─► PV : pvc-dc6ef8c2-79e8-4d4e-acea-e4b10d1b7b4f (Dynamic Allocation)                                                        │   │
+ │   │  └─► StorageClass: longhorn (Provisioner: driver.longhorn.io | Reclaim: Delete | Binding: Immediate | AllowExpansion: true)    │   │
+ │   └───────────────────────────────────────────────────────┬────────────────────────────────────────────────────────────────────────┘   │
+ └───────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────────┘
+                                                             │
+                                                             ▼ Synchronous Volume Chunk Replication
+ ┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ UNDERLYING BARE-METAL INFRASTRUCTURE TOPOGRAPHY (Hardware Compute Base)                                                                │
+ │  ┌────────────────────────┐  ┌────────────────────────┐  ┌────────────────────────┐  ┌────────────────────────┐                        │
+ │  │ Node 1: k8s-master     │  │ Node 2: k8s-worker1    │  │ Node 3: k8s-worker2    │  │ Node 4: k8s-worker3    │                        │
+ │  │ Role: Control Plane    │  │ Role: Worker Engine    │  │ Role: Worker Engine    │  │ Role: Worker Engine    │                        │
+ │  │ OS: CentOS Stream 9    │  │ Storage Replica Chunk  │  │ Storage Replica Chunk  │  │ Storage Replica Chunk  │                        │
+ │  └────────────────────────┘  └────────────────────────┘  └────────────────────────┘  └────────────────────────┘                        │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Phase 1: Core Kubernetes Cluster & Compute Topology
 
