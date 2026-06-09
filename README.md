@@ -116,6 +116,28 @@ A cloud-native delivery platform implementing automated CI/CD and GitOps workflo
  │  └────────────────────────┘  └────────────────────────┘  └────────────────────────┘  └────────────────────────┘                        │
  └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+## Platform Overview & Technical Stack
+
+A quick look at the core design patterns, tools, and structural decisions powering the platform.
+
+### Core Capabilities
+* **Zero-Downtime Rollouts:** Managed via `RollingUpdate` strategies paired with HTTP health probes.
+* **Automated Quality Gates:** Pre-merge verification using Docker Compose sandboxes in GitHub Actions.
+* **Declarative GitOps:** Automated drift correction and synchronization orchestrated via ArgoCD.
+* **Replicated Storage:** High-availability block storage dynamically provisioned and mirrored by Longhorn.
+* **Cloud-Agnostic Ingress:** Native L2 load-balancing via MetalLB and Nginx Ingress (Zero vendor lock-in).
+
+### Technology Stack
+* **Compute & OS:** Kubernetes, Containerd, CentOS Stream 9
+* **Networking & Edge:** MetalLB (L2 Mode), Nginx Ingress, Flannel CNI
+* **Persistence & Caching:** PostgreSQL, Redis (In-Memory Ephemeral)
+* **Storage Engine:** Longhorn Distributed Block Storage
+* **CI/CD Automation:** GitHub Actions, ArgoCD, Docker, `yq`
+
+### Strategic Architecture Decisions
+* **Decoupled Dual-Repo:** Isolates application business logic from environment infrastructure manifests.
+* **Pull-Based Delivery:** ArgoCD pulls state configurations securely without exposing cluster API keys to CI.
+* **Bare-Metal First:** Software-defined layers ensure the identical stack runs on local hardware or any public cloud.
 
 ## Phase 1: Core Kubernetes Cluster & Compute Topology
 
