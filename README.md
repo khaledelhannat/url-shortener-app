@@ -620,7 +620,7 @@ kubectl get application -n argocd
   />
 </p>
 
-# Phase 7: Application CI/CD Pipeline Automation
+## Phase 7: Application CI/CD Pipeline Automation
 
 This phase establishes the automation loop connecting the application source code repository directly to the GitOps deployment engine. By decoupling the application code from the infrastructure configurations, the system implements a dual-repository structure that guarantees automated testing, container building, and declarative version bumping.
 
